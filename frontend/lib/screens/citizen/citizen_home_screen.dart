@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../models/complaint.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/complaint_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../constants/app_theme.dart';
+import '../../services/location_service.dart';
 import '../../widgets/complaint_card.dart';
 import '../../widgets/city_map_view.dart';
 import 'report_screen.dart';
@@ -21,6 +23,8 @@ class CitizenHomeScreen extends StatefulWidget {
 class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
   int _currentIndex = 0;
   bool _isMapView = false;
+  double? _userLat;
+  double? _userLng;
 
   final List<String> _categories = ['All', 'Pothole', 'Streetlight', 'Garbage', 'Water Leakage', 'Traffic'];
   final List<String> _statuses = ['All', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED'];
@@ -31,7 +35,18 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
     Future.microtask(() {
       Provider.of<ComplaintProvider>(context, listen: false).fetchComplaints();
       Provider.of<NotificationProvider>(context, listen: false).fetchNotifications();
+      _fetchUserLocation();
     });
+  }
+
+  Future<void> _fetchUserLocation() async {
+    final res = await LocationService.getCurrentLocation(context: context);
+    if (mounted) {
+      setState(() {
+        _userLat = res.latitude;
+        _userLng = res.longitude;
+      });
+    }
   }
 
   @override
@@ -218,6 +233,9 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
             child: _isMapView
                 ? CityMapView(
                     complaints: complaintProvider.complaints,
+                    userLat: _userLat,
+                    userLng: _userLng,
+                    onRecenter: _fetchUserLocation,
                     onComplaintSelected: (complaint) {
                       Navigator.push(
                         context,
@@ -234,7 +252,7 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.check_circle_outline, size: 52, color: AppTheme.textMuted.withOpacity(0.4)),
+                                Icon(Icons.check_circle_outline, size: 52, color: AppTheme.textMuted.withValues(alpha: 0.4)),
                                 const SizedBox(height: 12),
                                 const Text(
                                   'No open issues matching filter',
@@ -243,37 +261,54 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
                               ],
                             ),
                           )
-                        : RefreshIndicator(
-                            onRefresh: () => complaintProvider.fetchComplaints(),
-                            child: ListView.builder(
-                              padding: const EdgeInsets.only(bottom: 80),
-                              itemCount: complaintProvider.complaints.length,
-                              itemBuilder: (context, index) {
-                                final complaint = complaintProvider.complaints[index];
-                                return ComplaintCard(
-                                  complaint: complaint,
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => ComplaintDetailScreen(complaintId: complaint.id),
-                                      ),
+                        : Builder(
+                            builder: (context) {
+                              final sortedComplaints = List<Complaint>.from(complaintProvider.complaints);
+                              final uLat = _userLat;
+                              final uLng = _userLng;
+                              if (uLat != null && uLng != null) {
+                                sortedComplaints.sort((Complaint a, Complaint b) {
+                                  final distA = LocationService.distanceBetween(uLat, uLng, a.lat, a.lng);
+                                  final distB = LocationService.distanceBetween(uLat, uLng, b.lat, b.lng);
+                                  return distA.compareTo(distB);
+                                });
+                              }
+
+                              return RefreshIndicator(
+                                onRefresh: () => complaintProvider.fetchComplaints(),
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.only(bottom: 80),
+                                  itemCount: sortedComplaints.length,
+                                  itemBuilder: (context, index) {
+                                    final complaint = sortedComplaints[index];
+                                    return ComplaintCard(
+                                      complaint: complaint,
+                                      userLat: _userLat,
+                                      userLng: _userLng,
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => ComplaintDetailScreen(complaintId: complaint.id),
+                                          ),
+                                        );
+                                      },
+                                      onSupport: () async {
+                                        final ok = await complaintProvider.supportComplaint(complaint.id);
+                                        if (ok && mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Supported complaint #${complaint.id}! Priority boosted.'),
+                                              backgroundColor: AppTheme.primary,
+                                            ),
+                                          );
+                                        }
+                                      },
                                     );
                                   },
-                                  onSupport: () async {
-                                    final ok = await complaintProvider.supportComplaint(complaint.id);
-                                    if (ok && mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Supported complaint #${complaint.id}! Priority boosted.'),
-                                          backgroundColor: AppTheme.primary,
-                                        ),
-                                      );
-                                    }
-                                  },
-                                );
-                              },
-                            ),
+                                ),
+                              );
+                            },
                           ),
           ),
         ],

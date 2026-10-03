@@ -83,12 +83,19 @@ graph TD
 ```powershell
 cd backend
 npm install
-npm run seed     # Seeds admin, department officers, citizens, and sample issues
+
+# Configure environment variables (copy from .env.example)
+# PORT=3000
+# JWT_SECRET=your_jwt_secret
+# SEED_ADMIN_PASSWORD=AdminPassword123!
+# SEED_OFFICER_PASSWORD=OfficerPassword123!
+
+npm run seed     # Seeds essential system accounts: 1 admin and 1 officer per department
 npm start        # Launches API and static web bundle on http://localhost:3000
 ```
 *Run automated backend tests:*
 ```powershell
-npm test         # Executes end-to-end integration test suite
+npm test         # Executes end-to-end integration test suite (37 passing tests)
 ```
 
 ### 2. Frontend Setup
@@ -105,14 +112,19 @@ flutter run -d windows
 
 ---
 
-## 🔑 Demo Credentials (1-Click Login in App)
+## 🔑 Authentication & Seed Accounts
+
+All screens load live data from the SQLite backend. Logins use the standard email and password authentication form:
 
 | Role | Email | Password | Department / Scope |
 | :--- | :--- | :--- | :--- |
-| **Citizen (Alice)** | `citizen.alice@example.com` | `CitizenPassword123!` | Public reporting & community voting |
-| **Officer (Roads)** | `officer.roads@citypulse.gov` | `OfficerPassword123!` | Roads Department issue triage |
-| **Officer (Water)** | `officer.water@citypulse.gov` | `OfficerPassword123!` | Water Department issue triage |
-| **City Administrator** | `admin@citypulse.gov` | `AdminPassword123!` | Citywide Analytics & Reassignment |
+| **City Administrator** | `admin@citypulse.gov` | `SEED_ADMIN_PASSWORD` (default: `AdminPassword123!`) | Citywide analytics, user management, complaint reassignment |
+| **Roads Officer** | `officer.roads@citypulse.gov` | `SEED_OFFICER_PASSWORD` (default: `OfficerPassword123!`) | Roads department triage, status updates & photo proof |
+| **Electricity Officer**| `officer.electricity@citypulse.gov` | `SEED_OFFICER_PASSWORD` (default: `OfficerPassword123!`) | Electrical and lighting triage |
+| **Sanitation Officer** | `officer.sanitation@citypulse.gov` | `SEED_OFFICER_PASSWORD` (default: `OfficerPassword123!`) | Waste and garbage triage |
+| **Water Officer** | `officer.water@citypulse.gov` | `SEED_OFFICER_PASSWORD` (default: `OfficerPassword123!`) | Water leaks and drainage triage |
+| **Traffic Officer** | `officer.traffic@citypulse.gov` | `SEED_OFFICER_PASSWORD` (default: `OfficerPassword123!`) | Traffic congestion and signals triage |
+| **Citizens** | *Self-registered* | *Set upon registration* | Citizens register via the **Register** screen to report & vote on issues |
 
 ---
 

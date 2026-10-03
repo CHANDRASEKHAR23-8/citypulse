@@ -24,12 +24,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _fillAndLogin(String email, String password) {
-    _emailController.text = email;
-    _passwordController.text = password;
-    _submit();
-  }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -70,9 +64,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppTheme.primary.withOpacity(0.15),
+                        color: AppTheme.primary.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
-                        border: Border.all(color: AppTheme.primary.withOpacity(0.3), width: 2),
+                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3), width: 2),
                       ),
                       child: const Icon(
                         Icons.location_city_rounded,
@@ -101,60 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: AppTheme.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 28),
-
-                  // Quick Demo Logins Bar (Hackathon Convenience)
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.bgCard,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.flash_on_rounded, color: AppTheme.accent, size: 16),
-                            SizedBox(width: 6),
-                            Text(
-                              'Instant 1-Click Role Login',
-                              style: TextStyle(
-                                color: AppTheme.accent,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _buildQuickChip(
-                              label: '👤 Citizen (Alice)',
-                              onTap: () => _fillAndLogin('citizen.alice@example.com', 'CitizenPassword123!'),
-                            ),
-                            _buildQuickChip(
-                              label: '🛣️ Roads Officer',
-                              onTap: () => _fillAndLogin('officer.roads@citypulse.gov', 'OfficerPassword123!'),
-                            ),
-                            _buildQuickChip(
-                              label: '💧 Water Officer',
-                              onTap: () => _fillAndLogin('officer.water@citypulse.gov', 'OfficerPassword123!'),
-                            ),
-                            _buildQuickChip(
-                              label: '🛡️ City Admin',
-                              onTap: () => _fillAndLogin('admin@citypulse.gov', 'AdminPassword123!'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
 
                   // Email Field
                   TextFormField(
@@ -222,29 +163,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickChip({required String label, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppTheme.bgInput,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppTheme.border),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
           ),
         ),
       ),

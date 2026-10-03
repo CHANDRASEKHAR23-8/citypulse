@@ -73,15 +73,27 @@ async function runTests() {
     assert(adminLogin.status === 200 && adminLogin.body.token, 'Admin login succeeds with JWT');
     const adminToken = adminLogin.body.token;
 
-    // Login as Citizen
+    // Register a new citizen (Alice)
+    const aliceEmail = `citizen_alice_${Date.now()}@example.com`;
+    const regAlice = await request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Alice Johnson',
+        email: aliceEmail,
+        password: 'CitizenPassword123!'
+      })
+    });
+    assert(regAlice.status === 201 && regAlice.body.user.role === 'citizen', 'New citizen registration returns 201');
+    const aliceToken = regAlice.body.token;
+
+    // Login as the registered citizen
     const citizenLogin = await request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email: 'citizen.alice@example.com', password: 'CitizenPassword123!' })
+      body: JSON.stringify({ email: aliceEmail, password: 'CitizenPassword123!' })
     });
-    assert(citizenLogin.status === 200 && citizenLogin.body.token, 'Citizen login succeeds with JWT');
-    const aliceToken = citizenLogin.body.token;
+    assert(citizenLogin.status === 200 && citizenLogin.body.token, 'Registered citizen login succeeds with JWT');
 
-    // Register a new citizen
+    // Register a second citizen (Charlie)
     const newCitizenEmail = `testcitizen_${Date.now()}@example.com`;
     const regRes = await request('/auth/register', {
       method: 'POST',
@@ -91,13 +103,14 @@ async function runTests() {
         password: 'Password123!'
       })
     });
-    assert(regRes.status === 201 && regRes.body.user.role === 'citizen', 'New citizen registration returns 201');
+    assert(regRes.status === 201 && regRes.body.user.role === 'citizen', 'Second citizen registration returns 201');
     const charlieToken = regRes.body.token;
 
     // 5. Test Complaints Reporting & Auto-Assignment
     console.log('\n[Step 4] Testing Complaint Reporting & Auto-Assignment...');
-    const reportLat = 13.0827;
-    const reportLng = 80.2707;
+    const saltOffset = (Date.now() % 10000) * 0.005;
+    const reportLat = 13.0827 + saltOffset;
+    const reportLng = 80.2707 + saltOffset;
     const newComplaint = await request('/complaints', {
       method: 'POST',
       headers: { Authorization: `Bearer ${charlieToken}` },

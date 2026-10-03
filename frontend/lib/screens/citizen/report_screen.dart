@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../providers/complaint_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/image_picker_service.dart';
+import '../../services/location_service.dart';
 import '../../constants/app_theme.dart';
 import '../../widgets/duplicate_dialog.dart';
 import '../../widgets/city_map_view.dart';
@@ -21,13 +22,13 @@ class _ReportScreenState extends State<ReportScreen> {
   final _descController = TextEditingController();
 
   String _selectedCategory = 'Pothole';
-  double _lat = 12.9716;
-  double _lng = 77.5946;
-  String _locationName = 'MG Road / City Center';
+  double _lat = LocationService.defaultLat;
+  double _lng = LocationService.defaultLng;
+  String _locationStatus = 'Acquiring GPS location...';
+  bool _isLocating = false;
 
   Uint8List? _imageBytes;
   String? _imageName;
-  bool _showMapPicker = false;
 
   final List<Map<String, dynamic>> _categories = [
     {
@@ -67,17 +68,40 @@ class _ReportScreenState extends State<ReportScreen> {
     },
   ];
 
-  final List<Map<String, dynamic>> _landmarkPresets = [
-    {'name': 'City Center (MG Road)', 'lat': 12.9716, 'lng': 77.5946},
-    {'name': 'East Hub (Indiranagar)', 'lat': 12.9784, 'lng': 77.6408},
-    {'name': 'South Quarter (Koramangala)', 'lat': 12.9352, 'lng': 77.6245},
-    {'name': 'Tech Corridor (Whitefield)', 'lat': 12.9698, 'lng': 77.7500},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Automatically capture GPS location on open
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _captureLocation();
+    });
+  }
 
   @override
   void dispose() {
     _descController.dispose();
     super.dispose();
+  }
+
+  Future<void> _captureLocation() async {
+    setState(() {
+      _isLocating = true;
+      _locationStatus = 'Acquiring high-accuracy GPS...';
+    });
+
+    final result = await LocationService.getCurrentLocation(context: context);
+    if (mounted) {
+      setState(() {
+        _lat = result.latitude;
+        _lng = result.longitude;
+        _isLocating = false;
+        if (result.isDefaultFallback) {
+          _locationStatus = 'Default Central Center (GPS unavailable)';
+        } else {
+          _locationStatus = 'Real-time GPS Location Verified';
+        }
+      });
+    }
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -88,6 +112,36 @@ class _ReportScreenState extends State<ReportScreen> {
         _imageName = photo.name;
       });
     }
+  }
+
+  void _showRetakeOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgCard,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded, color: AppTheme.primary),
+              title: const Text('Retake Photo with Camera', style: TextStyle(color: AppTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: AppTheme.accent),
+              title: const Text('Choose Different from Gallery', style: TextStyle(color: AppTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handleSubmit({bool force = false}) async {
@@ -267,14 +321,25 @@ class _ReportScreenState extends State<ReportScreen> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: () => setState(() => _showMapPicker = !_showMapPicker),
-                    icon: Icon(_showMapPicker ? Icons.view_headline : Icons.map_outlined, size: 16),
-                    label: Text(_showMapPicker ? 'Hide Map' : 'Select on Map'),
+                  OutlinedButton.icon(
+                    onPressed: _isLocating ? null : _captureLocation,
+                    icon: _isLocating
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                          )
+                        : const Icon(Icons.my_location_rounded, size: 16),
+                    label: const Text('Use my location', style: TextStyle(fontSize: 12)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.primary),
+                      foregroundColor: AppTheme.primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
 
               // Coordinates Box
               Container(
@@ -286,23 +351,24 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.my_location_rounded, color: AppTheme.primary, size: 20),
+                    const Icon(Icons.pin_drop_rounded, color: AppTheme.primary, size: 22),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _locationName,
+                            _locationStatus,
                             style: const TextStyle(
                               color: AppTheme.textPrimary,
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
                             ),
                           ),
-                          Text(
-                            'Lat: ${_lat.toStringAsFixed(4)}, Lng: ${_lng.toStringAsFixed(4)}',
-                            style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                          const SizedBox(height: 2),
+                          SelectableText(
+                            'Latitude: ${_lat.toStringAsFixed(6)} • Longitude: ${_lng.toStringAsFixed(6)}',
+                            style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 12),
                           ),
                         ],
                       ),
@@ -311,67 +377,39 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ),
 
-              const SizedBox(height: 10),
-
-              // Quick Landmark Presets
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: _landmarkPresets.map((preset) {
-                  final isChosen = _lat == preset['lat'] && _lng == preset['lng'];
-                  return ChoiceChip(
-                    label: Text(preset['name'] as String, style: const TextStyle(fontSize: 11)),
-                    selected: isChosen,
-                    selectedColor: AppTheme.primary.withOpacity(0.2),
-                    backgroundColor: AppTheme.bgCard,
-                    labelStyle: TextStyle(
-                      color: isChosen ? AppTheme.primary : AppTheme.textSecondary,
-                      fontWeight: isChosen ? FontWeight.bold : FontWeight.normal,
-                    ),
-                    onSelected: (val) {
-                      if (val) {
-                        setState(() {
-                          _lat = preset['lat'] as double;
-                          _lng = preset['lng'] as double;
-                          _locationName = preset['name'] as String;
-                        });
-                      }
-                    },
-                  );
-                }).toList(),
-              ),
+              const SizedBox(height: 12),
 
               // Embedded Interactive Pin Picker Map
-              if (_showMapPicker) ...[
-                const SizedBox(height: 12),
-                Container(
-                  height: 220,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.primary, width: 1.5),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: CityMapView(
-                    complaints: provider.complaints,
-                    pickMode: true,
-                    pickedLat: _lat,
-                    pickedLng: _lng,
-                    onComplaintSelected: (_) {},
-                    onLocationPicked: (newLat, newLng) {
-                      setState(() {
-                        _lat = newLat;
-                        _lng = newLng;
-                        _locationName = 'Custom Map Pin';
-                      });
-                    },
-                  ),
+              Container(
+                height: 240,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.primary, width: 1.5),
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  '💡 Tap anywhere on the grid to place your issue pin',
-                  style: TextStyle(color: AppTheme.accent, fontSize: 11),
+                clipBehavior: Clip.antiAlias,
+                child: CityMapView(
+                  complaints: provider.complaints,
+                  pickMode: true,
+                  pickedLat: _lat,
+                  pickedLng: _lng,
+                  userLat: _lat,
+                  userLng: _lng,
+                  onRecenter: _captureLocation,
+                  onComplaintSelected: (_) {},
+                  onLocationPicked: (newLat, newLng) {
+                    setState(() {
+                      _lat = newLat;
+                      _lng = newLng;
+                      _locationStatus = 'Adjusted Location Pin on Map';
+                    });
+                  },
                 ),
-              ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '💡 Tap anywhere on the map to adjust your issue location pin.',
+                style: TextStyle(color: AppTheme.accent, fontSize: 11),
+              ),
 
               const SizedBox(height: 24),
 
@@ -395,80 +433,84 @@ class _ReportScreenState extends State<ReportScreen> {
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: AppTheme.statusResolved),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                         child: Image.memory(
                           _imageBytes!,
-                          width: 54,
-                          height: 54,
+                          width: double.infinity,
+                          height: 160,
                           fit: BoxFit.cover,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Photo Attached',
-                              style: TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                              ),
-                            ),
-                            Text(
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
                               _imageName ?? 'photo.jpg',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
                             ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.priorityHigh, size: 20),
-                        tooltip: 'Remove Photo',
-                        onPressed: () => setState(() {
-                          _imageBytes = null;
-                          _imageName = null;
-                        }),
+                          ),
+                          TextButton.icon(
+                            onPressed: _showRetakeOptions,
+                            icon: const Icon(Icons.refresh_rounded, size: 16),
+                            label: const Text('Retake'),
+                            style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton.icon(
+                            onPressed: () => setState(() {
+                              _imageBytes = null;
+                              _imageName = null;
+                            }),
+                            icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                            label: const Text('Remove'),
+                            style: TextButton.styleFrom(foregroundColor: AppTheme.priorityHigh),
+                          ),
+                        ],
                       ),
                     ],
                   ),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickImage(ImageSource.camera),
+                        icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                        label: const Text('Take Photo'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(color: AppTheme.primary),
+                          foregroundColor: AppTheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickImage(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library_rounded, size: 18),
+                        label: const Text('Choose from Gallery'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(color: AppTheme.border),
+                          foregroundColor: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _pickImage(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt_rounded, size: 18),
-                      label: const Text('Take Photo'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: const BorderSide(color: AppTheme.primary),
-                        foregroundColor: AppTheme.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _pickImage(ImageSource.gallery),
-                      icon: const Icon(Icons.photo_library_rounded, size: 18),
-                      label: const Text('Choose from Gallery'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: const BorderSide(color: AppTheme.border),
-                        foregroundColor: AppTheme.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
 
               const SizedBox(height: 32),
 

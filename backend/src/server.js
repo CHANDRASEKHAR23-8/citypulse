@@ -34,19 +34,22 @@ const uploadsDir = path.join(__dirname, '..', 'uploads');
 app.use('/uploads', express.static(uploadsDir));
 
 // Root & Health
-app.get('/api', (req, res) => {
-  res.json({
-    name: 'CityPulse Backend API',
-    status: 'online',
-    version: '1.0.0',
-    documentation: {
-      auth: ['POST /auth/register', 'POST /auth/login', 'GET /auth/me'],
-      complaints: ['POST /complaints', 'GET /complaints', 'GET /complaints/mine', 'GET /complaints/:id', 'POST /complaints/:id/support', 'PATCH /complaints/:id/status'],
-      officer: ['GET /officer/complaints'],
-      admin: ['GET /admin/complaints', 'PATCH /admin/complaints/:id/assign', 'GET /admin/users', 'PATCH /admin/users/:id', 'GET /admin/stats'],
-      notifications: ['GET /notifications', 'PATCH /notifications/:id/read', 'PATCH /notifications/read-all']
-    }
-  });
+app.get(['/', '/api'], (req, res, next) => {
+  if (req.path === '/api' || (req.headers.accept && req.headers.accept.includes('application/json')) || req.headers['content-type'] === 'application/json') {
+    return res.json({
+      name: 'CityPulse Backend API',
+      status: 'online',
+      version: '1.0.0',
+      documentation: {
+        auth: ['POST /auth/register', 'POST /auth/login', 'GET /auth/me'],
+        complaints: ['POST /complaints', 'GET /complaints', 'GET /complaints/mine', 'GET /complaints/:id', 'POST /complaints/:id/support', 'PATCH /complaints/:id/status'],
+        officer: ['GET /officer/complaints'],
+        admin: ['GET /admin/complaints', 'PATCH /admin/complaints/:id/assign', 'GET /admin/users', 'PATCH /admin/users/:id', 'GET /admin/stats'],
+        notifications: ['GET /notifications', 'PATCH /notifications/:id/read', 'PATCH /notifications/read-all']
+      }
+    });
+  }
+  next();
 });
 
 app.get('/health', (req, res) => {

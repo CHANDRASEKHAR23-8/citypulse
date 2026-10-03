@@ -84,6 +84,36 @@ class _UpdateStatusSheetState extends State<UpdateStatusSheet> {
     }
   }
 
+  void _showRetakeOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgCard,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded, color: AppTheme.primary),
+              title: const Text('Retake Photo with Camera', style: TextStyle(color: AppTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickResolutionPhoto(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: AppTheme.accent),
+              title: const Text('Choose Different from Gallery', style: TextStyle(color: AppTheme.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickResolutionPhoto(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -179,62 +209,66 @@ class _UpdateStatusSheetState extends State<UpdateStatusSheet> {
                 fontWeight: FontWeight.w700,
               ),
             ),
-              const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-              if (_resolutionImageBytes != null)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgInput,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.statusResolved),
-                  ),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.memory(
-                          _resolutionImageBytes!,
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Resolution Proof Attached',
-                              style: TextStyle(
-                                color: AppTheme.statusResolved,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                              ),
-                            ),
-                            Text(
-                              _resolutionImageName ?? 'resolution.jpg',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.priorityHigh, size: 20),
-                        tooltip: 'Remove',
-                        onPressed: () => setState(() {
-                          _resolutionImageBytes = null;
-                          _resolutionImageName = null;
-                        }),
-                      ),
-                    ],
-                  ),
+            if (_resolutionImageBytes != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgInput,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.statusResolved),
                 ),
-
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        _resolutionImageBytes!,
+                        width: double.infinity,
+                        height: 140,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _resolutionImageName ?? 'resolution_proof.jpg',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _showRetakeOptions,
+                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                          label: const Text('Retake'),
+                          style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton.icon(
+                          onPressed: () => setState(() {
+                            _resolutionImageBytes = null;
+                            _resolutionImageName = null;
+                          }),
+                          icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                          label: const Text('Remove'),
+                          style: TextButton.styleFrom(foregroundColor: AppTheme.priorityHigh),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              )
+            else
               Row(
                 children: [
                   Expanded(

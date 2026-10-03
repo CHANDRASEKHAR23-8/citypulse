@@ -56,11 +56,11 @@ class ImagePickerService {
     } on PlatformException catch (e) {
       if (context.mounted) {
         String friendlyMessage = 'Unable to access image source.';
-        final err = e.code.toLowerCase() + ' ' + (e.message?.toLowerCase() ?? '');
+        final err = '${e.code.toLowerCase()} ${(e.message ?? '').toLowerCase()}';
 
-        if (err.contains('camera_access_denied') || err.contains('permission')) {
-          friendlyMessage = 'Camera permission denied. Please enable camera access in your device settings.';
-        } else if (err.contains('no_available_camera') || err.contains('camera')) {
+        if (err.contains('camera_access_denied') || err.contains('permission') || err.contains('denied')) {
+          friendlyMessage = 'Camera/photo permission denied. Please enable access in settings.';
+        } else if (err.contains('no_available_camera') || err.contains('notfound') || err.contains('camera')) {
           friendlyMessage = 'No camera found on this device. Please choose an image from gallery instead.';
         } else {
           friendlyMessage = 'Camera/gallery error: ${e.message ?? e.code}';
@@ -77,9 +77,19 @@ class ImagePickerService {
       return null;
     } catch (e) {
       if (context.mounted) {
+        final err = e.toString().toLowerCase();
+        String friendlyMessage = 'Could not attach image.';
+        if (err.contains('permission') || err.contains('notallowed') || err.contains('denied')) {
+          friendlyMessage = 'Camera/photo permission denied. Please allow access in browser or settings.';
+        } else if (err.contains('notfound') || err.contains('no camera') || err.contains('devices not found')) {
+          friendlyMessage = 'No camera found on this device. Please choose an image from gallery instead.';
+        } else {
+          friendlyMessage = 'Could not attach image: $e';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not attach image: $e'),
+            content: Text(friendlyMessage),
             backgroundColor: AppTheme.priorityHigh,
             duration: const Duration(seconds: 3),
           ),

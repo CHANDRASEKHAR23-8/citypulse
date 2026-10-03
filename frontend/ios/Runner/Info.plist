@@ -6,6 +6,8 @@
 	<string>CityPulse requires camera access to take on-site photos of reported issues and resolution proof.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>CityPulse requires photo library access to upload photos of reported issues and resolution proof.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CityPulse requires your location to pinpoint issues on the map and find nearby complaints.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

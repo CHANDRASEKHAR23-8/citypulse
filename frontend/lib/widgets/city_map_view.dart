@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/complaint.dart';
 import '../constants/app_theme.dart';
+import '../services/location_service.dart';
 import 'status_badge.dart';
 import 'priority_badge.dart';
 
@@ -10,7 +13,10 @@ class CityMapView extends StatefulWidget {
   final Function(double lat, double lng)? onLocationPicked;
   final double? pickedLat;
   final double? pickedLng;
+  final double? userLat;
+  final double? userLng;
   final bool pickMode;
+  final VoidCallback? onRecenter;
 
   const CityMapView({
     super.key,
@@ -19,7 +25,10 @@ class CityMapView extends StatefulWidget {
     this.onLocationPicked,
     this.pickedLat,
     this.pickedLng,
+    this.userLat,
+    this.userLng,
     this.pickMode = false,
+    this.onRecenter,
   });
 
   @override
@@ -27,383 +36,402 @@ class CityMapView extends StatefulWidget {
 }
 
 class _CityMapViewState extends State<CityMapView> {
+  final MapController _mapController = MapController();
   Complaint? _activeComplaint;
-  Offset _mapOffset = const Offset(0, 0);
-  double _zoom = 1.0;
 
-  // Reference city center (e.g., Bengaluru City Center ~12.9716, 77.5946)
-  static const double baseLat = 12.9716;
-  static const double baseLng = 77.5946;
-  static const double coordinateScale = 12000.0; // Scale meters to canvas pixels
+  // Fallback city center coordinates (16.5062, 80.6480)
+  static const double fallbackLat = LocationService.defaultLat;
+  static const double fallbackLng = LocationService.defaultLng;
 
-  Offset _latLngToCanvas(double lat, double lng, Size size) {
-    final centerX = size.width / 2;
-    final centerY = size.height / 2;
-    final dx = (lng - baseLng) * coordinateScale * _zoom + _mapOffset.dx;
-    final dy = -(lat - baseLat) * coordinateScale * _zoom + _mapOffset.dy;
-    return Offset(centerX + dx, centerY + dy);
+  LatLng get _initialCenter {
+    if (widget.pickMode && widget.pickedLat != null && widget.pickedLng != null) {
+      return LatLng(widget.pickedLat!, widget.pickedLng!);
+    }
+    if (widget.userLat != null && widget.userLng != null) {
+      return LatLng(widget.userLat!, widget.userLng!);
+    }
+    if (widget.complaints.isNotEmpty) {
+      return LatLng(widget.complaints.first.lat, widget.complaints.first.lng);
+    }
+    return const LatLng(fallbackLat, fallbackLng);
   }
 
-  Map<String, double> _canvasToLatLng(Offset pos, Size size) {
-    final centerX = size.width / 2;
-    final centerY = size.height / 2;
-    final dx = (pos.dx - centerX - _mapOffset.dx) / (_zoom * coordinateScale);
-    final dy = -(pos.dy - centerY - _mapOffset.dy) / (_zoom * coordinateScale);
-    return {
-      'lat': baseLat + dy,
-      'lng': baseLng + dx,
-    };
+  void _recenter() {
+    final target = (widget.userLat != null && widget.userLng != null)
+        ? LatLng(widget.userLat!, widget.userLng!)
+        : (widget.pickedLat != null && widget.pickedLng != null)
+            ? LatLng(widget.pickedLat!, widget.pickedLng!)
+            : const LatLng(fallbackLat, fallbackLng);
+
+    _mapController.move(target, 15.0);
+    if (widget.onRecenter != null) {
+      widget.onRecenter!();
+    }
+  }
+
+  void _zoomIn() {
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(_mapController.camera.center, currentZoom + 1);
+  }
+
+  void _zoomOut() {
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(_mapController.camera.center, currentZoom - 1);
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = Size(constraints.maxWidth, constraints.maxHeight);
+    final markers = <Marker>[];
 
-        return GestureDetector(
-          onPanUpdate: (details) {
-            setState(() {
-              _mapOffset += details.delta;
-            });
-          },
-          onTapUp: (details) {
-            if (widget.pickMode && widget.onLocationPicked != null) {
-              final coords = _canvasToLatLng(details.localPosition, size);
-              widget.onLocationPicked!(coords['lat']!, coords['lng']!);
-            } else {
-              setState(() {
-                _activeComplaint = null;
-              });
-            }
-          },
+    // 1. User Location Marker
+    if (widget.userLat != null && widget.userLng != null) {
+      markers.add(
+        Marker(
+          point: LatLng(widget.userLat!, widget.userLng!),
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
           child: Stack(
+            alignment: Alignment.center,
             children: [
-              // Custom Painted Map Canvas (City Grid, Roads, Sectors)
-              CustomPaint(
-                size: size,
-                painter: _CityGridPainter(
-                  offset: _mapOffset,
-                  zoom: _zoom,
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.primary.withValues(alpha: 0.25),
+                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.5), width: 1.5),
                 ),
               ),
-
-              // Picked Location Pin (in Pick Mode)
-              if (widget.pickedLat != null && widget.pickedLng != null) ...[
-                Builder(
-                  builder: (context) {
-                    final pinPos = _latLngToCanvas(widget.pickedLat!, widget.pickedLng!, size);
-                    return Positioned(
-                      left: pinPos.dx - 18,
-                      top: pinPos.dy - 36,
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              'Selected Location',
-                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          const Icon(
-                            Icons.location_on,
-                            color: AppTheme.primary,
-                            size: 36,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+              Container(
+                width: 18,
+                height: 18,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.primary,
+                  boxShadow: [
+                    BoxShadow(color: Colors.white, blurRadius: 4, spreadRadius: 1),
+                  ],
                 ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 2. Pick Mode Draggable / Tappable Pin
+    if (widget.pickMode && widget.pickedLat != null && widget.pickedLng != null) {
+      markers.add(
+        Marker(
+          point: LatLng(widget.pickedLat!, widget.pickedLng!),
+          width: 50,
+          height: 50,
+          alignment: Alignment.topCenter,
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              // Allows drag adjustment
+            },
+            child: const Icon(
+              Icons.location_on_rounded,
+              color: AppTheme.priorityHigh,
+              size: 48,
+              shadows: [
+                Shadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 3)),
               ],
+            ),
+          ),
+        ),
+      );
+    }
 
-              // Complaint Pins
-              ...widget.complaints.map((c) {
-                final pos = _latLngToCanvas(c.lat, c.lng, size);
-                final categoryColor = AppTheme.getCategoryColor(c.category);
-                final isSelected = _activeComplaint?.id == c.id;
+    // 3. Complaint Markers coloured by Status
+    for (final c in widget.complaints) {
+      final statusColor = AppTheme.getStatusColor(c.status);
+      final isSelected = _activeComplaint?.id == c.id;
 
-                return Positioned(
-                  left: pos.dx - 18,
-                  top: pos.dy - 32,
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _activeComplaint = c;
-                      });
-                    },
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: isSelected ? Colors.white : categoryColor,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isSelected ? categoryColor : Colors.white,
-                              width: 2.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: categoryColor.withOpacity(isSelected ? 0.8 : 0.4),
-                                blurRadius: isSelected ? 12 : 6,
-                                spreadRadius: isSelected ? 3 : 1,
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            AppTheme.getCategoryIcon(c.category),
-                            size: isSelected ? 20 : 16,
-                            color: isSelected ? categoryColor : Colors.white,
-                          ),
-                        ),
-                        CustomPaint(
-                          size: const Size(8, 6),
-                          painter: _TrianglePainter(
-                            color: isSelected ? categoryColor : categoryColor,
-                          ),
-                        ),
-                      ],
+      markers.add(
+        Marker(
+          point: LatLng(c.lat, c.lng),
+          width: isSelected ? 48 : 38,
+          height: isSelected ? 48 : 38,
+          alignment: Alignment.center,
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _activeComplaint = c;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.9),
+                  width: isSelected ? 3 : 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: statusColor.withValues(alpha: isSelected ? 0.6 : 0.4),
+                    blurRadius: isSelected ? 12 : 6,
+                    spreadRadius: isSelected ? 3 : 1,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Icon(
+                  AppTheme.getCategoryIcon(c.category),
+                  color: Colors.white,
+                  size: isSelected ? 22 : 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        // Real OpenStreetMap Tiles
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _initialCenter,
+            initialZoom: widget.pickMode ? 15.0 : 13.0,
+            minZoom: 3.0,
+            maxZoom: 18.0,
+            onTap: (tapPosition, point) {
+              if (widget.pickMode && widget.onLocationPicked != null) {
+                widget.onLocationPicked!(point.latitude, point.longitude);
+              } else {
+                setState(() {
+                  _activeComplaint = null;
+                });
+              }
+            },
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.citypulse.app',
+              maxZoom: 19,
+            ),
+            MarkerLayer(markers: markers),
+          ],
+        ),
+
+        // Pick Mode Banner
+        if (widget.pickMode)
+          Positioned(
+            top: 12,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.bgCard.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.primary, width: 1.2),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2)),
+                ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.touch_app_rounded, color: AppTheme.primary, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Tap anywhere on the map to adjust your issue location pin.',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ),
-                );
-              }),
+                ],
+              ),
+            ),
+          ),
 
-              // Map Controls Overlay (Zoom In, Zoom Out, Recenter)
-              Positioned(
-                right: 16,
-                bottom: 24,
+        // Map Control Floating Buttons (Recenter, Zoom In, Zoom Out)
+        Positioned(
+          right: 14,
+          bottom: _activeComplaint != null ? 180 : 20,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton.small(
+                heroTag: 'map_recenter_${widget.pickMode}',
+                backgroundColor: AppTheme.bgCard,
+                foregroundColor: AppTheme.primary,
+                onPressed: _recenter,
+                tooltip: 'Recenter on My Location',
+                child: const Icon(Icons.my_location_rounded, size: 20),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.bgCard,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.border),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black26, blurRadius: 6),
+                  ],
+                ),
                 child: Column(
                   children: [
-                    FloatingActionButton.small(
-                      heroTag: 'zoomIn',
-                      backgroundColor: AppTheme.bgCard,
-                      foregroundColor: AppTheme.textPrimary,
-                      onPressed: () {
-                        setState(() {
-                          _zoom = (_zoom * 1.25).clamp(0.4, 3.5);
-                        });
-                      },
-                      child: const Icon(Icons.add),
+                    IconButton(
+                      icon: const Icon(Icons.add, size: 20, color: AppTheme.textPrimary),
+                      tooltip: 'Zoom In',
+                      onPressed: _zoomIn,
                     ),
-                    const SizedBox(height: 8),
-                    FloatingActionButton.small(
-                      heroTag: 'zoomOut',
-                      backgroundColor: AppTheme.bgCard,
-                      foregroundColor: AppTheme.textPrimary,
-                      onPressed: () {
-                        setState(() {
-                          _zoom = (_zoom / 1.25).clamp(0.4, 3.5);
-                        });
-                      },
-                      child: const Icon(Icons.remove),
-                    ),
-                    const SizedBox(height: 8),
-                    FloatingActionButton.small(
-                      heroTag: 'recenter',
-                      backgroundColor: AppTheme.bgCard,
-                      foregroundColor: AppTheme.primary,
-                      onPressed: () {
-                        setState(() {
-                          _mapOffset = const Offset(0, 0);
-                          _zoom = 1.0;
-                        });
-                      },
-                      child: const Icon(Icons.my_location),
+                    const Divider(height: 1, color: AppTheme.border),
+                    IconButton(
+                      icon: const Icon(Icons.remove, size: 20, color: AppTheme.textPrimary),
+                      tooltip: 'Zoom Out',
+                      onPressed: _zoomOut,
                     ),
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
 
-              // Active Complaint Popup Card
-              if (_activeComplaint != null)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  top: 16,
-                  child: Card(
-                    color: AppTheme.bgCard,
-                    elevation: 10,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: AppTheme.primary, width: 1.5),
+        // Active Complaint Bottom Card Overlay
+        if (_activeComplaint != null)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: _buildActiveComplaintCard(_activeComplaint!),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildActiveComplaintCard(Complaint complaint) {
+    String? distanceText;
+    if (widget.userLat != null && widget.userLng != null) {
+      final dist = LocationService.distanceBetween(
+        widget.userLat!,
+        widget.userLng!,
+        complaint.lat,
+        complaint.lng,
+      );
+      distanceText = LocationService.formatDistance(dist);
+    } else if (complaint.distanceMeters != null) {
+      distanceText = LocationService.formatDistance(complaint.distanceMeters!.toDouble());
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.getStatusColor(complaint.status), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Colors.black45, blurRadius: 16, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.getCategoryColor(complaint.category).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+                    child: Icon(
+                      AppTheme.getCategoryIcon(complaint.category),
+                      color: AppTheme.getCategoryColor(complaint.category),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    complaint.category,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  StatusBadge(status: complaint.status, compact: true),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 20, color: AppTheme.textMuted),
+                onPressed: () => setState(() => _activeComplaint = null),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            complaint.description,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  PriorityBadge(
+                    priority: complaint.priority,
+                    score: complaint.priorityScore,
+                    compact: true,
+                  ),
+                  if (distanceText != null) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.getCategoryColor(_activeComplaint!.category).withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  AppTheme.getCategoryIcon(_activeComplaint!.category),
-                                  color: AppTheme.getCategoryColor(_activeComplaint!.category),
-                                  size: 18,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                _activeComplaint!.category,
-                                style: const TextStyle(
-                                  color: AppTheme.textPrimary,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const Spacer(),
-                              StatusBadge(status: _activeComplaint!.status, compact: true),
-                              IconButton(
-                                icon: const Icon(Icons.close, size: 18, color: AppTheme.textMuted),
-                                onPressed: () {
-                                  setState(() {
-                                    _activeComplaint = null;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
+                          const Icon(Icons.navigation_rounded, size: 11, color: AppTheme.primary),
+                          const SizedBox(width: 4),
                           Text(
-                            _activeComplaint!.description,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              PriorityBadge(
-                                priority: _activeComplaint!.priority,
-                                score: _activeComplaint!.priorityScore,
-                                compact: true,
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  final selected = _activeComplaint!;
-                                  setState(() => _activeComplaint = null);
-                                  widget.onComplaintSelected(selected);
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  textStyle: const TextStyle(fontSize: 12),
-                                ),
-                                child: const Text('View Full Details'),
-                              ),
-                            ],
+                            '$distanceText away',
+                            style: const TextStyle(
+                              color: AppTheme.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+                  ],
+                ],
+              ),
+              ElevatedButton.icon(
+                onPressed: () => widget.onComplaintSelected(complaint),
+                icon: const Icon(Icons.arrow_forward_rounded, size: 14),
+                label: const Text('View Details', style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
+              ),
             ],
           ),
-        );
-      },
+        ],
+      ),
     );
   }
-}
-
-class _CityGridPainter extends CustomPainter {
-  final Offset offset;
-  final double zoom;
-
-  _CityGridPainter({required this.offset, required this.zoom});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bgPaint = Paint()..color = const Color(0xFF0D131F);
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
-
-    final gridPaint = Paint()
-      ..color = const Color(0xFF1E293B).withOpacity(0.5)
-      ..strokeWidth = 1;
-
-    final roadPaint = Paint()
-      ..color = const Color(0xFF334155).withOpacity(0.6)
-      ..strokeWidth = 3;
-
-    final highwayPaint = Paint()
-      ..color = const Color(0xFF0EA5E9).withOpacity(0.25)
-      ..strokeWidth = 6;
-
-    final step = 50.0 * zoom;
-    final startX = (offset.dx % step);
-    final startY = (offset.dy % step);
-
-    // Draw city grid lines
-    for (double x = startX; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
-    }
-    for (double y = startY; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-
-    // Draw prominent city avenues and highways relative to center
-    final centerX = size.width / 2 + offset.dx;
-    final centerY = size.height / 2 + offset.dy;
-
-    // Major Highway
-    canvas.drawLine(Offset(centerX - 400 * zoom, centerY - 250 * zoom), Offset(centerX + 400 * zoom, centerY + 250 * zoom), highwayPaint);
-    canvas.drawLine(Offset(centerX - 350 * zoom, centerY + 200 * zoom), Offset(centerX + 350 * zoom, centerY - 200 * zoom), highwayPaint);
-
-    // Arterial Roads
-    canvas.drawLine(Offset(centerX, 0), Offset(centerX, size.height), roadPaint);
-    canvas.drawLine(Offset(0, centerY), Offset(size.width, centerY), roadPaint);
-    canvas.drawLine(Offset(0, centerY - 150 * zoom), Offset(size.width, centerY - 150 * zoom), roadPaint);
-    canvas.drawLine(Offset(0, centerY + 150 * zoom), Offset(size.width, centerY + 150 * zoom), roadPaint);
-    canvas.drawLine(Offset(centerX - 200 * zoom, 0), Offset(centerX - 200 * zoom, size.height), roadPaint);
-    canvas.drawLine(Offset(centerX + 200 * zoom, 0), Offset(centerX + 200 * zoom, size.height), roadPaint);
-
-    // Draw City Central Ring
-    final ringPaint = Paint()
-      ..color = const Color(0xFF38BDF8).withOpacity(0.12)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 24 * zoom;
-    canvas.drawCircle(Offset(centerX, centerY), 90 * zoom, ringPaint);
-
-    // Radar Pulse circles around city center
-    final pulsePaint = Paint()
-      ..color = const Color(0xFF0EA5E9).withOpacity(0.08)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(centerX, centerY), 160 * zoom, pulsePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _CityGridPainter oldDelegate) {
-    return oldDelegate.offset != offset || oldDelegate.zoom != zoom;
-  }
-}
-
-class _TrianglePainter extends CustomPainter {
-  final Color color;
-  _TrianglePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width / 2, size.height)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/complaint.dart';
 import '../constants/app_theme.dart';
 import '../constants/api_constants.dart';
+import '../services/location_service.dart';
 import 'status_badge.dart';
 import 'priority_badge.dart';
 
@@ -11,6 +12,8 @@ class ComplaintCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onSupport;
   final bool showSupportButton;
+  final double? userLat;
+  final double? userLng;
 
   const ComplaintCard({
     super.key,
@@ -18,6 +21,8 @@ class ComplaintCard extends StatelessWidget {
     required this.onTap,
     this.onSupport,
     this.showSupportButton = true,
+    this.userLat,
+    this.userLng,
   });
 
   String _formatDate(DateTime dt) {
@@ -39,6 +44,14 @@ class ComplaintCard extends StatelessWidget {
     final categoryIcon = AppTheme.getCategoryIcon(complaint.category);
     final reportPhoto = complaint.reportPhoto;
 
+    String? distanceDisplay;
+    if (userLat != null && userLng != null) {
+      final meters = LocationService.distanceBetween(userLat!, userLng!, complaint.lat, complaint.lng);
+      distanceDisplay = LocationService.formatDistance(meters);
+    } else if (complaint.distanceMeters != null) {
+      distanceDisplay = LocationService.formatDistance(complaint.distanceMeters!.toDouble());
+    }
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       clipBehavior: Clip.antiAlias,
@@ -57,7 +70,7 @@ class ComplaintCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: categoryColor.withOpacity(0.18),
+                      color: categoryColor.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(categoryIcon, color: categoryColor, size: 20),
@@ -115,10 +128,10 @@ class ComplaintCard extends StatelessWidget {
                                 ),
                               ),
                             ],
-                            if (complaint.distanceMeters != null) ...[
+                            if (distanceDisplay != null) ...[
                               const Text(' • ', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                               Text(
-                                '${complaint.distanceMeters}m away',
+                                '$distanceDisplay away',
                                 style: const TextStyle(
                                   color: AppTheme.primary,
                                   fontSize: 12,
