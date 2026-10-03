@@ -1,0 +1,26 @@
+name: citypulse
+description: "CityPulse: Real-time urban problem reporting and civic management"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.0
+  http_parser: ^4.0.2
+  image_picker: ^1.1.2
+  provider: ^6.1.1
+  intl: ^0.19.0
+  shared_preferences: ^2.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
